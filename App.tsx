@@ -6,6 +6,7 @@ import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import Inventory from './components/Inventory';
 import Sales from './components/Sales';
+import StockIn from './components/StockIn';
 import Reports from './components/Reports';
 
 const App: React.FC = () => {
@@ -32,7 +33,7 @@ const App: React.FC = () => {
     const updatedProducts = [...products, product];
     setProducts(updatedProducts);
     storageService.saveProducts(updatedProducts);
-    notify("Produto cadastrado com sucesso!");
+    notify("Mercadoria cadastrada!");
   };
 
   const handleAddTransaction = (txData: {
@@ -40,14 +41,27 @@ const App: React.FC = () => {
     type: 'IN' | 'OUT';
     quantity: number;
     customerName?: string;
+    newPurchasePrice?: number;
+    newSalePrice?: number;
+    discountPercent?: number;
   }) => {
     const product = products.find(p => p.id === txData.productId);
     if (!product) return;
 
     if (txData.type === 'OUT' && product.stock < txData.quantity) {
-      notify("Estoque insuficiente para a venda!", "error");
+      notify("Estoque insuficiente!", "error");
       return;
     }
+
+    const effectivePurchasePrice = txData.newPurchasePrice ?? product.purchasePrice;
+    const baseSalePrice = txData.newSalePrice ?? product.price;
+    
+    // Aplica desconto se houver (apenas para OUT)
+    const discountFactor = (txData.type === 'OUT' && txData.discountPercent) ? (1 - (txData.discountPercent / 100)) : 1;
+    const effectiveSalePriceFinal = baseSalePrice * discountFactor;
+    
+    // O lucro é baseado no preço de venda FINAL menos o preço de custo
+    const profitPerUnit = txData.type === 'OUT' ? (effectiveSalePriceFinal - effectivePurchasePrice) : 0;
 
     const transaction: Transaction = {
       id: Math.random().toString(36).substr(2, 9),
@@ -56,7 +70,10 @@ const App: React.FC = () => {
       type: txData.type,
       quantity: txData.quantity,
       date: new Date().toISOString(),
-      totalValue: product.price * txData.quantity,
+      purchaseValue: effectivePurchasePrice,
+      saleValue: effectiveSalePriceFinal, 
+      totalValue: (txData.type === 'OUT' ? effectiveSalePriceFinal : effectivePurchasePrice) * txData.quantity,
+      profit: profitPerUnit * txData.quantity,
       customerName: txData.customerName
     };
 
@@ -64,7 +81,10 @@ const App: React.FC = () => {
       if (p.id === txData.productId) {
         return {
           ...p,
-          stock: txData.type === 'IN' ? p.stock + txData.quantity : p.stock - txData.quantity
+          stock: txData.type === 'IN' ? p.stock + txData.quantity : p.stock - txData.quantity,
+          // Se for entrada, atualiza permanentemente os preços de tabela
+          purchasePrice: txData.type === 'IN' ? effectivePurchasePrice : p.purchasePrice,
+          price: txData.type === 'IN' ? baseSalePrice : p.price 
         };
       }
       return p;
@@ -75,49 +95,38 @@ const App: React.FC = () => {
     setTransactions(updatedTransactions);
     storageService.saveProducts(updatedProducts);
     storageService.saveTransactions(updatedTransactions);
-    notify(txData.type === 'OUT' ? "Venda registrada!" : "Entrada registrada!");
-  };
-
-  const handleQuickUpdateStock = (id: string, amount: number) => {
-    const prod = products.find(p => p.id === id);
-    if (!prod) return;
     
-    handleAddTransaction({
-      productId: id,
-      type: 'IN',
-      quantity: amount
-    });
-  };
-
-  const renderView = () => {
-    return (
-      <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-        {(() => {
-          switch (currentView) {
-            case 'dashboard': return <Dashboard products={products} transactions={transactions} />;
-            case 'inventory': return <Inventory products={products} onAddProduct={handleAddProduct} onUpdateStock={handleQuickUpdateStock} />;
-            case 'sales': return <Sales products={products} onAddTransaction={handleAddTransaction} />;
-            case 'reports': return <Reports transactions={transactions} />;
-            default: return <Dashboard products={products} transactions={transactions} />;
-          }
-        })()}
-      </div>
-    );
+    const message = txData.type === 'OUT' 
+      ? (txData.discountPercent ? `Venda com ${txData.discountPercent}% de desconto!` : "Venda realizada!") 
+      : "Reposição de estoque concluída!";
+    notify(message);
   };
 
   return (
-    <div className="flex min-h-screen bg-slate-50 selection:bg-blue-100 selection:text-blue-700">
+    <div className="flex min-h-screen bg-slate-50 selection:bg-blue-100 selection:text-blue-700 font-sans">
       <Sidebar currentView={currentView} setView={setCurrentView} />
       <main className="flex-1 p-4 md:p-8 overflow-y-auto">
         <div className="max-w-7xl mx-auto">
-          {renderView()}
+          <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+            {(() => {
+              switch (currentView) {
+                case 'dashboard': return <Dashboard products={products} transactions={transactions} />;
+                case 'inventory': return <Inventory products={products} onAddProduct={handleAddProduct} onUpdateStock={(id, amt) => handleAddTransaction({productId: id, type: 'IN', quantity: amt})} />;
+                case 'sales': return <Sales products={products} onAddTransaction={(data) => handleAddTransaction({...data, type: 'OUT'})} />;
+                case 'stock-in': return <StockIn products={products} onAddTransaction={(data) => handleAddTransaction({...data, type: 'IN'})} />;
+                case 'reports': return <Reports transactions={transactions} />;
+                default: return <Dashboard products={products} transactions={transactions} />;
+              }
+            })()}
+          </div>
         </div>
       </main>
 
-      {/* Global Notification Toast */}
       {notification && (
-        <div className={`fixed bottom-6 right-6 px-6 py-3 rounded-2xl shadow-2xl text-white font-medium flex items-center gap-3 animate-in slide-in-from-right-full duration-300 z-[100] ${notification.type === 'success' ? 'bg-slate-900' : 'bg-red-600'}`}>
-          <i className={`fas ${notification.type === 'success' ? 'fa-check-circle text-green-400' : 'fa-exclamation-circle'}`}></i>
+        <div className={`fixed bottom-8 right-8 px-6 py-4 rounded-3xl shadow-2xl text-white font-black flex items-center gap-3 animate-in slide-in-from-right-full duration-300 z-[100] ${notification.type === 'success' ? 'bg-slate-900' : 'bg-red-600'}`}>
+          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${notification.type === 'success' ? 'bg-green-500/20 text-green-400' : 'bg-white/20 text-white'}`}>
+            <i className={`fas ${notification.type === 'success' ? 'fa-check' : 'fa-exclamation'}`}></i>
+          </div>
           {notification.message}
         </div>
       )}

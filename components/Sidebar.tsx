@@ -10,8 +10,9 @@ interface SidebarProps {
 const Sidebar: React.FC<SidebarProps> = ({ currentView, setView }) => {
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: 'fa-chart-line' },
-    { id: 'inventory', label: 'Estoque', icon: 'fa-boxes-stacked' },
-    { id: 'sales', label: 'Vendas/Saídas', icon: 'fa-cart-shopping' },
+    { id: 'inventory', label: 'Estoque Central', icon: 'fa-boxes-stacked' },
+    { id: 'sales', label: 'Faturamento (Venda)', icon: 'fa-cart-shopping' },
+    { id: 'stock-in', label: 'Suprimentos (Entrada)', icon: 'fa-truck-ramp-box' },
     { id: 'reports', label: 'Relatórios', icon: 'fa-file-invoice-dollar' },
   ];
 
@@ -28,14 +29,14 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView }) => {
           <button
             key={item.id}
             onClick={() => setView(item.id as View)}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors text-left ${
               currentView === item.id 
                 ? 'bg-blue-600 text-white font-medium' 
                 : 'text-slate-400 hover:bg-slate-800 hover:text-white'
             }`}
           >
             <i className={`fas ${item.icon} w-6 text-center`}></i>
-            {item.label}
+            <span className="text-sm">{item.label}</span>
           </button>
         ))}
       </nav>
